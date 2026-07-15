@@ -15,7 +15,7 @@ Client  ──1:N── Contract        contracts gate access; expiry revokes it
 Client  ──1:N── Headquarters ── M:N ── User (assignments, same-client enforced)
 Client  ──1:N── User (CLIENT type)
 Partner ──1:N── User (PARTNER type)
-User    ──M:N── Role            role codes are returned on login / in JWT claims
+User    ──M:N── Role ──M:N── Capability   roles are editable bundles of capability codes
 ```
 
 Three user populations, one `User` model (`accounts.User`, `user_type` field):
@@ -25,10 +25,27 @@ Three user populations, one `User` model (`accounts.User`, `user_type` field):
 - **PARTNER** — belongs to a `Partner`; scope = the partner's linked clients.
 - **CLIENT** — belongs to a `Client`; scope = that client only.
 
-Authorization always has two axes: **roles** say what a user may do,
+Authorization always has two axes: **capabilities** say what a user may do,
 **scope** says which clients they may do it to. Scope has a single source of
 truth: `Client.objects.visible_to(user)` (`organizations/models.py`) — every
 future endpoint must filter through it.
+
+### Roles vs. capabilities
+
+Administrators can define **custom roles** at runtime, so role names carry
+no enforceable meaning. The stable authorization contract is the
+**capability code** (`clients.read`, `users.manage`, …):
+
+- `Capability` — atomic permission codes. Backend-enforced codes are
+  constants in `Capability.Codes`; admins may add extra codes that only the
+  desktop app interprets (e.g. gating a screen).
+- `Role` — a named bundle of capabilities. The six seeded roles are flagged
+  `is_system` (undeletable, capabilities still editable). A user's effective
+  capabilities are the union across their roles (`user.capability_codes()`).
+- Enforcement: API endpoints use
+  `require_capabilities(read=..., write=...)` (`accounts/permissions.py`) —
+  reads need the `read` code, mutations the `write` code. The desktop app
+  must gate features on the `capabilities` claim, never on role names.
 
 ## Contract-based revocation
 
@@ -45,9 +62,9 @@ future endpoint must filter through it.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/v1/auth/login/` | Credentials → access + refresh JWT. Access token carries `user_type` and `roles` claims. |
+| `POST /api/v1/auth/login/` | Credentials → access + refresh JWT. Access token carries `user_type`, `roles` and `capabilities` claims. |
 | `POST /api/v1/auth/refresh/` | Refresh → new tokens; re-checks contract validity. |
-| `GET /api/v1/me/` | Identity, roles, client/partner, `scoped_client_ids`, headquarters. |
+| `GET /api/v1/me/` | Identity, roles, capabilities, client/partner, `scoped_client_ids`, headquarters. |
 | `GET /api/docs/` | Swagger UI (OpenAPI schema at `/api/schema/`). |
 
 ## Getting started
@@ -57,7 +74,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env            # adjust SECRET_KEY etc.
 docker compose up -d db         # PostgreSQL 16 (or omit DATABASE_URL for SQLite)
-python manage.py migrate        # also seeds the six well-known roles
+python manage.py migrate        # also seeds capabilities + the six system roles
 python manage.py createsuperuser
 python manage.py runserver
 ```

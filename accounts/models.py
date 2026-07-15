@@ -9,13 +9,52 @@ class UserType(models.TextChoices):
     CLIENT = "CLIENT", "Client"
 
 
+class Capability(models.Model):
+    """An atomic permission code — the stable authorization contract.
+
+    Roles are editable bundles of capabilities, so with custom roles a
+    role *name* means nothing to enforcement code. The API's permission
+    checks and the desktop app's feature gating must always test
+    capability codes, never role names. Backend-enforced codes live in
+    `Capability.Codes`; platform admins may add further codes that only
+    the desktop app interprets (e.g. gating a screen).
+    """
+
+    class Codes:
+        CLIENTS_READ = "clients.read"
+        CLIENTS_MANAGE = "clients.manage"
+        PARTNERS_READ = "partners.read"
+        PARTNERS_MANAGE = "partners.manage"
+        USERS_READ = "users.read"
+        USERS_MANAGE = "users.manage"
+        CONTRACTS_READ = "contracts.read"
+        CONTRACTS_MANAGE = "contracts.manage"
+        HEADQUARTERS_READ = "headquarters.read"
+        HEADQUARTERS_MANAGE = "headquarters.manage"
+        ROLES_READ = "roles.read"
+        ROLES_MANAGE = "roles.manage"
+
+    code = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name_plural = "capabilities"
+
+    def __str__(self):
+        return self.code
+
+
 class Role(models.Model):
-    """A named capability set returned to the desktop app on login.
+    """A named, runtime-editable bundle of capabilities.
 
     Roles decide *what* a user may do; the user's type/organization
     decides *which clients* they may do it to (see
-    Client.objects.visible_to). Well-known codes live in `Role.Codes`
-    and are seeded by a data migratio n.
+    Client.objects.visible_to). The six built-in roles are seeded by a
+    data migration and flagged `is_system`; custom roles are created by
+    administrators at runtime. Never key authorization off `code` —
+    use capability codes (see Capability).
     """
 
     class Codes:
@@ -29,12 +68,22 @@ class Role(models.Model):
     code = models.SlugField(max_length=50, unique=True)
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
+    capabilities = models.ManyToManyField(Capability, related_name="roles", blank=True)
+    is_system = models.BooleanField(
+        default=False,
+        help_text="Seeded role required by the platform; cannot be deleted.",
+    )
 
     class Meta:
         ordering = ["code"]
 
     def __str__(self):
         return self.name
+
+    def delete(self, *args, **kwargs):
+        if self.is_system:
+            raise ValidationError("System roles cannot be deleted.")
+        return super().delete(*args, **kwargs)
 
 
 class User(AbstractUser):
@@ -128,3 +177,16 @@ class User(AbstractUser):
 
     def role_codes(self):
         return list(self.roles.values_list("code", flat=True))
+
+    def capability_codes(self):
+        """Effective capabilities: the union across all of the user's
+        roles. This — not role codes — is what authorization checks
+        and the desktop app must consume."""
+        return list(
+            Capability.objects.filter(roles__users=self)
+            .values_list("code", flat=True)
+            .distinct()
+        )
+
+    def has_capability(self, code):
+        return Capability.objects.filter(roles__users=self, code=code).exists()

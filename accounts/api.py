@@ -28,6 +28,10 @@ class ScopedTokenObtainPairSerializer(TokenObtainPairSerializer):
         token = super().get_token(user)
         token["user_type"] = user.user_type
         token["roles"] = user.role_codes()
+        # Capabilities, not role names, are the enforceable contract:
+        # roles are runtime-editable bundles, so the desktop app must
+        # gate features on these codes.
+        token["capabilities"] = user.capability_codes()
         return token
 
     def validate(self, attrs):
@@ -56,6 +60,7 @@ class RefreshView(TokenRefreshView):
 
 class MeSerializer(serializers.ModelSerializer):
     roles = serializers.SlugRelatedField(slug_field="code", many=True, read_only=True)
+    capabilities = serializers.SerializerMethodField()
     client = serializers.SerializerMethodField()
     partner = serializers.SerializerMethodField()
     scoped_client_ids = serializers.SerializerMethodField()
@@ -71,11 +76,15 @@ class MeSerializer(serializers.ModelSerializer):
             "last_name",
             "user_type",
             "roles",
+            "capabilities",
             "client",
             "partner",
             "scoped_client_ids",
             "headquarters",
         ]
+
+    def get_capabilities(self, user):
+        return user.capability_codes()
 
     def get_client(self, user):
         if user.client_id:

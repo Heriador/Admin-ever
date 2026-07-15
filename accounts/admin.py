@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import Role, User
+from .models import Capability, Role, User
 
 
 @admin.register(User)
@@ -19,5 +19,25 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
+    list_display = ("code", "name", "is_system")
+    list_filter = ("is_system",)
+    search_fields = ("code", "name")
+    filter_horizontal = ("capabilities",)
+
+    def get_readonly_fields(self, request, obj=None):
+        # System role identities are fixed; their capability bundles
+        # stay editable.
+        if obj and obj.is_system:
+            return ("code", "is_system")
+        return ("is_system",)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.is_system:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+@admin.register(Capability)
+class CapabilityAdmin(admin.ModelAdmin):
     list_display = ("code", "name")
     search_fields = ("code", "name")

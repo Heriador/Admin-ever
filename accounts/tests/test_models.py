@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
-from accounts.models import Role, UserType
+from accounts.models import Capability, Role, UserType
 from organizations.models import ClientStatus
 
 from .factories import make_client, make_contract, make_partner, make_user
@@ -126,3 +126,48 @@ class RoleTests(TestCase):
         self.assertCountEqual(
             user.role_codes(), [Role.Codes.SUPER_ADMIN, Role.Codes.PLATFORM_VIEWER]
         )
+
+
+class CapabilityTests(TestCase):
+    def test_system_roles_are_flagged_and_bundled(self):
+        self.assertEqual(Role.objects.filter(is_system=True).count(), 6)
+        super_admin = Role.objects.get(code=Role.Codes.SUPER_ADMIN)
+        self.assertEqual(super_admin.capabilities.count(), Capability.objects.count())
+        viewer = Role.objects.get(code=Role.Codes.PLATFORM_VIEWER)
+        self.assertTrue(
+            all(c.code.endswith(".read") for c in viewer.capabilities.all())
+        )
+
+    def test_capability_codes_union_across_roles(self):
+        custom = Role.objects.create(code="AUDITOR", name="Auditor")
+        custom.capabilities.set(
+            Capability.objects.filter(
+                code__in=[Capability.Codes.CONTRACTS_READ, Capability.Codes.CLIENTS_READ]
+            )
+        )
+        user = make_user(UserType.PLATFORM, roles=[Role.Codes.PLATFORM_VIEWER])
+        user.roles.add(custom)
+        codes = user.capability_codes()
+        # Union, deduplicated: clients.read appears in both roles.
+        self.assertEqual(codes.count(Capability.Codes.CLIENTS_READ), 1)
+        self.assertIn(Capability.Codes.CONTRACTS_READ, codes)
+        self.assertNotIn(Capability.Codes.CLIENTS_MANAGE, codes)
+
+    def test_has_capability(self):
+        user = make_user(UserType.PLATFORM, roles=[Role.Codes.PLATFORM_VIEWER])
+        self.assertTrue(user.has_capability(Capability.Codes.CLIENTS_READ))
+        self.assertFalse(user.has_capability(Capability.Codes.CLIENTS_MANAGE))
+
+    def test_user_without_roles_has_no_capabilities(self):
+        user = make_user(client=make_client())
+        self.assertEqual(user.capability_codes(), [])
+
+    def test_system_role_cannot_be_deleted(self):
+        role = Role.objects.get(code=Role.Codes.SUPER_ADMIN)
+        with self.assertRaises(ValidationError):
+            role.delete()
+
+    def test_custom_role_can_be_deleted(self):
+        custom = Role.objects.create(code="TEMP", name="Temp")
+        custom.delete()
+        self.assertFalse(Role.objects.filter(code="TEMP").exists())

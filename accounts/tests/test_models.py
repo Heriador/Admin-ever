@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from accounts.models import Role, UserType
-from contracts.models import ContractStatus
+from organizations.models import ClientStatus
 
 from .factories import make_client, make_contract, make_partner, make_user
 
@@ -54,10 +54,17 @@ class ActiveAccessTests(TestCase):
         )
         self.assertFalse(make_user(client=client).has_active_access())
 
-    def test_client_user_of_inactive_client_is_revoked(self):
-        client = make_client(is_active=False)
-        make_contract(client)
-        self.assertFalse(make_user(client=client).has_active_access())
+    def test_only_active_client_status_grants_access(self):
+        # Every non-ACTIVE status must lock out the client's users, even
+        # with a perfectly valid contract in place.
+        for status in ClientStatus:
+            with self.subTest(status=status):
+                client = make_client(status=status)
+                make_contract(client)
+                user = make_user(client=client)
+                self.assertEqual(
+                    user.has_active_access(), status == ClientStatus.ACTIVE
+                )
 
     def test_inactive_user_is_revoked(self):
         client = make_client()
@@ -82,8 +89,14 @@ class ScopedClientsTests(TestCase):
         self.with_contract = make_client("With contract")
         make_contract(self.with_contract)
         self.without_contract = make_client("Without contract")
-        self.inactive = make_client("Inactive", is_active=False)
-        make_contract(self.inactive)
+        # Contracted clients in every non-ACTIVE status: none may appear
+        # in anyone's scope.
+        for status in (
+            ClientStatus.WAITING,
+            ClientStatus.INACTIVE,
+            ClientStatus.DEACTIVATED,
+        ):
+            make_contract(make_client(f"{status} client", status=status))
 
     def test_platform_scope_is_all_contracted_active_clients(self):
         user = make_user(UserType.PLATFORM)

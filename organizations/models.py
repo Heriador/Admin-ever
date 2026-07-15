@@ -4,6 +4,16 @@ from django.db import models
 from django.utils import timezone
 
 
+class ClientStatus(models.TextChoices):
+    WAITING = "WAITING", "Waiting"  # Created, pending approval or activation
+    ACTIVE = "ACTIVE", "Active"
+    INACTIVE = "INACTIVE", "Inactive"  # Temporarily suspended, may be reactivated
+    DEACTIVATED = "DEACTIVATED", "Deactivated"  # Terminated permanently
+
+    # Only ACTIVE grants access; every other status locks out the
+    # client's users and drops the client from partner/platform scope.
+
+
 class ClientQuerySet(models.QuerySet):
     def visible_to(self, user):
         """The single source of truth for client scoping.
@@ -20,6 +30,9 @@ class ClientQuerySet(models.QuerySet):
             return self.filter(pk=user.client_id)
         return self.none()
 
+    def active(self):
+        return self.filter(status=ClientStatus.ACTIVE)
+
     def with_active_contract(self, at=None):
         from contracts.models import Contract
 
@@ -29,7 +42,9 @@ class ClientQuerySet(models.QuerySet):
 
 class Client(models.Model):
     name = models.CharField(max_length=255, unique=True)
-    is_active = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=20, choices=ClientStatus.choices, default=ClientStatus.WAITING
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -41,6 +56,14 @@ class Client(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_active(self):
+        """Access is granted only while ACTIVE; WAITING, INACTIVE and
+        DEACTIVATED all deny it. Keep every access decision on this
+        property (or ClientQuerySet.active()) so a new status can never
+        slip through an ad-hoc comparison."""
+        return self.status == ClientStatus.ACTIVE
 
     def has_active_contract(self, at=None):
         at = at or timezone.now().date()

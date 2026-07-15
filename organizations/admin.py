@@ -17,8 +17,8 @@ class HeadquartersInline(admin.TabularInline):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ("name", "is_active", "contract_status", "created_at")
-    list_filter = ("is_active",)
+    list_display = ("name", "status", "contract_status", "created_at")
+    list_filter = ("status",)
     search_fields = ("name",)
     inlines = [ContractInline, HeadquartersInline]
 

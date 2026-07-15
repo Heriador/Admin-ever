@@ -9,7 +9,11 @@ test suite can run without a database server.
 
 from datetime import timedelta
 from pathlib import Path
+import os
 
+from dotenv import load_dotenv  
+
+load_dotenv()  # Load environment variables from .env file  
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent

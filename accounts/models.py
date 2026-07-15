@@ -15,7 +15,7 @@ class Role(models.Model):
     Roles decide *what* a user may do; the user's type/organization
     decides *which clients* they may do it to (see
     Client.objects.visible_to). Well-known codes live in `Role.Codes`
-    and are seeded by a data migration.
+    and are seeded by a data migratio n.
     """
 
     class Codes:
@@ -122,7 +122,7 @@ class User(AbstractUser):
 
         return (
             Client.objects.visible_to(self)
-            .filter(is_active=True)
+            .active()
             .with_active_contract()
         )
 

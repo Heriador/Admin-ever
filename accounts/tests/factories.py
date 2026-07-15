@@ -11,14 +11,18 @@ from django.utils import timezone
 
 from accounts.models import Role, UserType
 from contracts.models import Contract, ContractStatus
-from organizations.models import Client, Headquarters, Partner
+from organizations.models import Client, ClientStatus, Headquarters, Partner
 
 User = get_user_model()
 _seq = itertools.count()
 
 
-def make_client(name=None, **kwargs):
-    return Client.objects.create(name=name or f"Client {next(_seq)}", **kwargs)
+def make_client(name=None, status=ClientStatus.ACTIVE, **kwargs):
+    # Tests default to ACTIVE (the model default is WAITING) so that
+    # access checks pass unless a test opts into another status.
+    return Client.objects.create(
+        name=name or f"Client {next(_seq)}", status=status, **kwargs
+    )
 
 
 def make_partner(name=None, clients=(), **kwargs):

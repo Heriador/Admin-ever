@@ -65,7 +65,24 @@ no enforceable meaning. The stable authorization contract is the
 | `POST /api/v1/auth/login/` | Credentials → access + refresh JWT. Access token carries `user_type`, `roles` and `capabilities` claims. |
 | `POST /api/v1/auth/refresh/` | Refresh → new tokens; re-checks contract validity. |
 | `GET /api/v1/me/` | Identity, roles, capabilities, client/partner, `scoped_client_ids`, headquarters. |
+| `/api/v1/clients/` | CRUD minus DELETE — lifecycle via `status`. |
+| `/api/v1/partners/` | CRUD minus DELETE — lifecycle via `is_active`. |
+| `/api/v1/users/` | CRUD; DELETE deactivates instead of removing. |
+| `/api/v1/contracts/` | CRUD; DELETE allowed for DRAFT only, close others by status. |
+| `/api/v1/headquarters/` | CRUD + `POST {id}/assign/` and `{id}/unassign/` (`{"user_id": n}`). |
+| `/api/v1/roles/` | CRUD for custom roles; system roles: bundle editable, identity frozen, undeletable. |
+| `/api/v1/capabilities/` | Read-only catalog. |
 | `GET /api/docs/` | Swagger UI (OpenAPI schema at `/api/schema/`). |
+
+All list/detail endpoints filter through `visible_to()` — out-of-scope
+records are 404s, so existence never leaks. Reads and writes are gated by
+the corresponding `.read` / `.manage` capability. User administration adds
+two safety rules:
+
+- non-platform users can only create CLIENT users inside their scope and
+  can never re-home an existing user (`user_type`/`client`/`partner` frozen);
+- a role is grantable only if the granter already holds every capability
+  it bundles — no privilege escalation through role assignment.
 
 ## Getting started
 
@@ -97,7 +114,7 @@ python manage.py test
 - [x] Phase 1 — foundation: custom user, JWT auth, PostgreSQL, OpenAPI, CORS
 - [x] Phase 2 — domain models with scoping + contract validity (tested)
 - [x] Phase 3 — auth API: login/refresh with contract checks, `/api/v1/me/`
-- [ ] Phase 4 — admin CRUD API: clients, partners, users, contracts, headquarters
+- [x] Phase 4 — admin CRUD API: clients, partners, users, contracts, headquarters, roles
 - [ ] Phase 5 — custom admin UI against the OpenAPI schema
 - [ ] Phase 6 — lifecycle & hardening: audit log, login rate limiting, nightly job wiring
 - [ ] Phase 7 — deployment & CI

@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -86,6 +87,31 @@ class Role(models.Model):
         return super().delete(*args, **kwargs)
 
 
+class UserQuerySet(models.QuerySet):
+    def visible_to(self, user):
+        """User scoping, mirroring Client.objects.visible_to: platform
+        staff see everyone; partner users see their partner's own users
+        plus the users of its linked clients; client users see their
+        client's users."""
+        if user.is_platform:
+            return self
+        if user.is_partner and user.partner_id:
+            return self.filter(
+                models.Q(client__partners=user.partner_id)
+                | models.Q(partner_id=user.partner_id)
+            ).distinct()
+        if user.is_client and user.client_id:
+            return self.filter(client_id=user.client_id)
+        return self.none()
+
+
+class UserManager(DjangoUserManager.from_queryset(UserQuerySet)):
+    # Concrete named class (not a from_queryset() dynamic type) so the
+    # migration framework can serialize it: Django's UserManager sets
+    # use_in_migrations = True.
+    pass
+
+
 class User(AbstractUser):
     user_type = models.CharField(
         max_length=20, choices=UserType.choices, default=UserType.CLIENT
@@ -105,6 +131,8 @@ class User(AbstractUser):
         related_name="users",
     )
     roles = models.ManyToManyField(Role, related_name="users", blank=True)
+
+    objects = UserManager()
 
     class Meta(AbstractUser.Meta):
         constraints = [

@@ -31,13 +31,15 @@ def make_partner(name=None, clients=(), **kwargs):
     return partner
 
 
-def make_contract(client, status=ContractStatus.ACTIVE, start=None, end="default", **kwargs):
+def make_contract(
+    client, status=ContractStatus.ACTIVE, start=None, end="default", reference=None, **kwargs
+):
     today = timezone.now().date()
     if end == "default":
         end = today + timedelta(days=365)
     return Contract.objects.create(
         client=client,
-        reference=f"C-{next(_seq)}",
+        reference=reference or f"C-{next(_seq)}",
         status=status,
         start_date=start or today - timedelta(days=30),
         end_date=end,

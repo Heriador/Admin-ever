@@ -11,6 +11,11 @@ class ContractStatus(models.TextChoices):
 
 
 class ContractQuerySet(models.QuerySet):
+    def visible_to(self, user):
+        from organizations.models import Client
+
+        return self.filter(client__in=Client.objects.visible_to(user))
+
     def currently_valid(self, at=None):
         """Contracts that grant access on the given date.
 

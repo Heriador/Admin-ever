@@ -44,9 +44,16 @@ Factory password is `test-password-123`.
 
 ## Gotchas
 
-- No commits/env: without `.env` the settings fall back to SQLite —
-  fine for verification; delete `db.sqlite3` afterwards (it's gitignored).
-- System `pyjwt`/`cryptography` in this container can be broken
-  (pyo3 panic); fix with `pip install --upgrade --ignore-installed pyjwt cryptography`.
+- **The dev machine's `.env` points at the user's local PostgreSQL**
+  (`DATABASE_URL=postgres://...`), so `manage.py migrate`/`shell` touch a
+  persistent DB, not a scratch SQLite file. Seed with unique names
+  (factory sequences restart per process → `C-0` collisions), track every
+  row you create, and delete exactly those rows when done.
+- On Windows/PowerShell 7: use `Invoke-WebRequest -SkipHttpErrorCheck`
+  to read 4xx bodies; 204 responses have byte-array content (skip
+  `.Substring`). Launch server via
+  `Start-Process python -ArgumentList "manage.py","runserver","127.0.0.1:8765","--noreload" -WindowStyle Hidden`.
 - Wrong-password and unknown-user intentionally share one 401 message
   (no user enumeration); contract expiry has a distinct 401 message.
+- Write-capability denials are 403 even where plain DRF would give 405
+  (permission check runs before handler resolution).

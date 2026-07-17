@@ -70,6 +70,15 @@ class Client(models.Model):
         return self.contracts.currently_valid(at=at).exists()
 
 
+class PartnerQuerySet(models.QuerySet):
+    def visible_to(self, user):
+        if user.is_platform:
+            return self
+        if user.is_partner and user.partner_id:
+            return self.filter(pk=user.partner_id)
+        return self.none()
+
+
 class Partner(models.Model):
     """An organization whose users administer one or more clients."""
 
@@ -79,11 +88,18 @@ class Partner(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    objects = PartnerQuerySet.as_manager()
+
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
+
+
+class HeadquartersQuerySet(models.QuerySet):
+    def visible_to(self, user):
+        return self.filter(client__in=Client.objects.visible_to(user))
 
 
 class Headquarters(models.Model):
@@ -102,6 +118,8 @@ class Headquarters(models.Model):
         related_name="headquarters",
         blank=True,
     )
+
+    objects = HeadquartersQuerySet.as_manager()
 
     class Meta:
         ordering = ["client__name", "name"]
